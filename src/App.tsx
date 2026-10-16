@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Bell,
@@ -14,7 +15,10 @@ import {
 import Sidebar from "./components/Sidebar";
 import StatCard from "./components/StatCard";
 import TaskTable from "./components/TaskTable";
-import { tasks } from "./data/tasks";
+import CreateTaskForm from "./components/CreateTaskForm";
+import type { Task } from "./types";
+import { createTask, fetchTasks } from "./services/taskApi";
+import type { CreateTaskInput } from "./services/taskApi";
 import {
   countOverdueTasks,
   countTasksByStatus,
@@ -27,16 +31,77 @@ function App() {
   const [activePage, setActivePage] = useState("Dashboard");
   const [searchQuery, setSearchQuery] = useState("");
 
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
+  const [tasksError, setTasksError] = useState<string | null>(null);
+
+  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [createTaskError, setCreateTaskError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTasks() {
+      try {
+        setIsLoadingTasks(true);
+        setTasksError(null);
+
+        const data = await fetchTasks();
+
+        if (!cancelled) {
+          setTasks(data);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setTasksError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load tasks.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingTasks(false);
+        }
+      }
+    }
+
+    void loadTasks();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleCreateTask(input: CreateTaskInput) {
+    setIsCreatingTask(true);
+    setCreateTaskError(null);
+
+    try {
+      const createdTask = await createTask(input);
+
+      setTasks((currentTasks) => [...currentTasks, createdTask]);
+      setIsCreateFormOpen(false);
+      setSearchQuery("");
+    } catch (error) {
+      setCreateTaskError(
+        error instanceof Error ? error.message : "Unable to create task.",
+      );
+    } finally {
+      setIsCreatingTask(false);
+    }
+  }
+
   const filteredTasks = useMemo(
     () => filterTasks(tasks, searchQuery),
-    [searchQuery],
+    [tasks, searchQuery],
   );
 
   const completedTasks = countTasksByStatus(tasks, "COMPLETED");
   const inProgressTasks = countTasksByStatus(tasks, "IN_PROGRESS");
   const todoTasks = countTasksByStatus(tasks, "TODO");
 
-  // Fixed reference date for the current demo dataset.
   const overdueTasks = countOverdueTasks(tasks, "2026-10-16");
 
   const stats = [
@@ -67,7 +132,9 @@ function App() {
     {
       label: "Completed",
       value: completedTasks,
-      detail: `${Math.round((completedTasks / Math.max(tasks.length, 1)) * 100)}% of all tasks`,
+      detail: `${Math.round(
+        (completedTasks / Math.max(tasks.length, 1)) * 100,
+      )}% of all tasks`,
       icon: TrendingUp,
       trend: "Completed",
       positive: true,
@@ -76,12 +143,21 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar
-        activePage={activePage}
-        onNavigate={setActivePage}
-      />
+      <Sidebar activePage={activePage} onNavigate={setActivePage} />
 
       <main className="main-content">
+        {isLoadingTasks && (
+          <p className="api-feedback" role="status">
+            Loading tasks from NexusOps...
+          </p>
+        )}
+
+        {tasksError && (
+          <p className="api-feedback api-error" role="alert">
+            Could not load tasks: {tasksError}
+          </p>
+        )}
+
         <header className="topbar">
           <div className="breadcrumb">
             <span>Workspace</span>
@@ -173,10 +249,7 @@ function App() {
                   </button>
                 </div>
 
-                <TaskTable
-                  tasks={filteredTasks}
-                  variant="dashboard"
-                />
+                <TaskTable tasks={filteredTasks} variant="dashboard" />
 
                 <div className="panel-footer">
                   <span>
@@ -209,23 +282,32 @@ function App() {
                   <span className="progress-period">All projects</span>
                 </div>
 
-                <div className="progress-track" aria-label="Task status distribution">
+                <div
+                  className="progress-track"
+                  aria-label="Task status distribution"
+                >
                   <div
                     className="progress-segment progress-completed"
                     style={{
-                      width: `${(completedTasks / Math.max(tasks.length, 1)) * 100}%`,
+                      width: `${
+                        (completedTasks / Math.max(tasks.length, 1)) * 100
+                      }%`,
                     }}
                   />
                   <div
                     className="progress-segment progress-in-progress"
                     style={{
-                      width: `${(inProgressTasks / Math.max(tasks.length, 1)) * 100}%`,
+                      width: `${
+                        (inProgressTasks / Math.max(tasks.length, 1)) * 100
+                      }%`,
                     }}
                   />
                   <div
                     className="progress-segment progress-todo"
                     style={{
-                      width: `${(todoTasks / Math.max(tasks.length, 1)) * 100}%`,
+                      width: `${
+                        (todoTasks / Math.max(tasks.length, 1)) * 100
+                      }%`,
                     }}
                   />
                 </div>
@@ -280,24 +362,58 @@ function App() {
                 </p>
               </div>
 
-              <div className="task-count-badge">
-                {filteredTasks.length}{" "}
-                {filteredTasks.length === 1 ? "task" : "tasks"}
+              <div className="tasks-heading-actions">
+                <div className="task-count-badge">
+                  {filteredTasks.length}{" "}
+                  {filteredTasks.length === 1 ? "task" : "tasks"}
+                </div>
+
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => {
+                    setCreateTaskError(null);
+                    setIsCreateFormOpen(true);
+                  }}
+                >
+                  <Plus size={17} />
+                  New task
+                </button>
               </div>
             </div>
+
+            {isCreateFormOpen && (
+              <div className="panel create-task-panel">
+                <div className="panel-header">
+                  <div>
+                    <h2>Create a task</h2>
+                    <p>Add a task to your NexusOps workspace.</p>
+                  </div>
+                </div>
+
+                <CreateTaskForm
+                  onSubmit={handleCreateTask}
+                  onCancel={() => {
+                    setIsCreateFormOpen(false);
+                    setCreateTaskError(null);
+                  }}
+                  isSubmitting={isCreatingTask}
+                  error={createTaskError}
+                />
+              </div>
+            )}
 
             <div className="panel">
               <div className="panel-header">
                 <div>
                   <h2>All tasks</h2>
-                  <p>Search across task titles, projects, assignees, and status</p>
+                  <p>
+                    Search across task titles, projects, assignees, and status
+                  </p>
                 </div>
               </div>
 
-              <TaskTable
-                tasks={filteredTasks}
-                variant="tasks"
-              />
+              <TaskTable tasks={filteredTasks} variant="tasks" />
             </div>
           </section>
         )}
