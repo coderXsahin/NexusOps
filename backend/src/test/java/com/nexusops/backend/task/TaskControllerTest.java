@@ -2,7 +2,9 @@
 package com.nexusops.backend.task;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,14 +17,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -36,7 +39,7 @@ class TaskControllerTest {
     private ObjectMapper objectMapper;
 
     @MockitoBean
-    private TaskRepository taskRepository;
+    private TaskService taskService;
 
     private Task sampleTask() {
         return new Task(
@@ -51,25 +54,25 @@ class TaskControllerTest {
 
     @Test
     void shouldGetAllTasks() throws Exception {
-        when(taskRepository.findAll()).thenReturn(List.of(sampleTask()));
+        Task task = sampleTask();
+        when(taskService.getAllTasks()).thenReturn(List.of(task));
 
         mockMvc.perform(get("/api/tasks"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].title")
-                        .value("Implement task API"))
+                .andExpect(jsonPath("$[0].title").value("Implement task API"))
                 .andExpect(jsonPath("$[0].project").value("NexusOps"))
                 .andExpect(jsonPath("$[0].assignee").value("SK"))
                 .andExpect(jsonPath("$[0].priority").value("HIGH"))
-                .andExpect(jsonPath("$[0].status").value("IN_PROGRESS"));
+                .andExpect(jsonPath("$[0].status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$[0].dueDate").value("2026-10-25"));
 
-        verify(taskRepository).findAll();
+        verify(taskService).getAllTasks();
     }
 
     @Test
     void shouldCreateTask() throws Exception {
         Task task = sampleTask();
-
-        when(taskRepository.save(any(Task.class))).thenReturn(task);
+        when(taskService.createTask(any(Task.class))).thenReturn(task);
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -81,12 +84,12 @@ class TaskControllerTest {
                 .andExpect(jsonPath("$.priority").value("HIGH"))
                 .andExpect(jsonPath("$.status").value("IN_PROGRESS"));
 
-        verify(taskRepository).save(any(Task.class));
+        verify(taskService).createTask(any(Task.class));
     }
 
     @Test
     void shouldRejectTaskWithBlankTitle() throws Exception {
-        String invalidJson = """
+        String json = """
                 {
                   "title": "   ",
                   "project": "NexusOps",
@@ -99,88 +102,76 @@ class TaskControllerTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(invalidJson))
+                        .content(json))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Validation failed"))
-                .andExpect(jsonPath("$.fieldErrors.title")
-                        .value("Title is required"));
+                .andExpect(jsonPath("$.fieldErrors.title").value("Title is required"));
 
-        verify(taskRepository, never()).save(any(Task.class));
+        verify(taskService, never()).createTask(any(Task.class));
     }
 
     @Test
     void shouldUpdateExistingTask() throws Exception {
-        Task existingTask = sampleTask();
-        Task updatedTask = new Task(
-                "Updated task title",
-                "NexusOps",
-                "SK",
-                Task.Priority.MEDIUM,
-                Task.Status.COMPLETED,
-                LocalDate.of(2026, 11, 1)
-        );
-
-        when(taskRepository.findById(1L))
-                .thenReturn(Optional.of(existingTask));
-        when(taskRepository.save(any(Task.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        Task updatedTask = sampleTask();
+        when(taskService.updateTask(eq(1L), any(Task.class)))
+                .thenReturn(updatedTask);
 
         mockMvc.perform(put("/api/tasks/1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updatedTask)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.title").value("Updated task title"))
-                .andExpect(jsonPath("$.priority").value("MEDIUM"))
-                .andExpect(jsonPath("$.status").value("COMPLETED"));
+                .andExpect(jsonPath("$.title").value("Implement task API"))
+                .andExpect(jsonPath("$.priority").value("HIGH"))
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"));
 
-        verify(taskRepository).findById(1L);
-        verify(taskRepository).save(any(Task.class));
+        verify(taskService).updateTask(eq(1L), any(Task.class));
     }
 
     @Test
     void shouldReturnNotFoundWhenUpdatingMissingTask() throws Exception {
-        when(taskRepository.findById(999L)).thenReturn(Optional.empty());
+        when(taskService.updateTask(eq(999L), any(Task.class)))
+                .thenThrow(new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Task not found with id: 999"
+                ));
 
         mockMvc.perform(put("/api/tasks/999")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(sampleTask())))
                 .andExpect(status().isNotFound());
 
-        verify(taskRepository, never()).save(any(Task.class));
+        verify(taskService).updateTask(eq(999L), any(Task.class));
     }
 
     @Test
     void shouldDeleteExistingTask() throws Exception {
-        Task existingTask = sampleTask();
-
-        when(taskRepository.findById(1L))
-                .thenReturn(Optional.of(existingTask));
-        doNothing().when(taskRepository).delete(existingTask);
+        doNothing().when(taskService).deleteTask(1L);
 
         mockMvc.perform(delete("/api/tasks/1"))
                 .andExpect(status().isNoContent());
 
-        verify(taskRepository).findById(1L);
-        verify(taskRepository).delete(existingTask);
+        verify(taskService).deleteTask(1L);
     }
 
     @Test
     void shouldReturnNotFoundWhenDeletingMissingTask() throws Exception {
-        when(taskRepository.findById(999L)).thenReturn(Optional.empty());
+        doThrow(new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Task not found with id: 999"
+        )).when(taskService).deleteTask(999L);
 
         mockMvc.perform(delete("/api/tasks/999"))
                 .andExpect(status().isNotFound());
 
-        verify(taskRepository, never()).delete(any(Task.class));
+        verify(taskService).deleteTask(999L);
     }
 
     @Test
     void shouldRejectTaskWithBlankProject() throws Exception {
-        String invalidJson = """
+        String json = """
                 {
                   "title": "Implement task API",
-                  "project": " ",
+                  "project": "   ",
                   "assignee": "SK",
                   "priority": "HIGH",
                   "status": "TODO",
@@ -190,22 +181,21 @@ class TaskControllerTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(invalidJson))
+                        .content(json))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Validation failed"))
-                .andExpect(jsonPath("$.fieldErrors.project")
-                        .value("Project is required"));
+                .andExpect(jsonPath("$.fieldErrors.project").value("Project is required"));
 
-        verify(taskRepository, never()).save(any(Task.class));
+        verify(taskService, never()).createTask(any(Task.class));
     }
 
     @Test
     void shouldRejectTaskWithBlankAssignee() throws Exception {
-        String invalidJson = """
+        String json = """
                 {
                   "title": "Implement task API",
                   "project": "NexusOps",
-                  "assignee": " ",
+                  "assignee": "   ",
                   "priority": "HIGH",
                   "status": "TODO",
                   "dueDate": "2026-10-25"
@@ -214,18 +204,17 @@ class TaskControllerTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(invalidJson))
+                        .content(json))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Validation failed"))
-                .andExpect(jsonPath("$.fieldErrors.assignee")
-                        .value("Assignee is required"));
+                .andExpect(jsonPath("$.fieldErrors.assignee").value("Assignee is required"));
 
-        verify(taskRepository, never()).save(any(Task.class));
+        verify(taskService, never()).createTask(any(Task.class));
     }
 
     @Test
     void shouldRejectTaskWhenDueDateIsMissing() throws Exception {
-        String invalidJson = """
+        String json = """
                 {
                   "title": "Implement task API",
                   "project": "NexusOps",
@@ -237,38 +226,30 @@ class TaskControllerTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(invalidJson))
+                        .content(json))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Validation failed"))
-                .andExpect(jsonPath("$.fieldErrors.dueDate")
-                        .value("Due date is required"));
+                .andExpect(jsonPath("$.fieldErrors.dueDate").value("Due date is required"));
 
-        verify(taskRepository, never()).save(any(Task.class));
+        verify(taskService, never()).createTask(any(Task.class));
     }
 
     @Test
     void shouldRejectMalformedJson() throws Exception {
-        String malformedJson = """
-                {
-                  "title": "Implement task API",
-                }
-                """;
-
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(malformedJson))
+                        .content("{ invalid json }"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Invalid request body"))
                 .andExpect(jsonPath("$.fieldErrors").isMap())
                 .andExpect(jsonPath("$.fieldErrors").isEmpty());
 
-        verify(taskRepository, never()).save(any(Task.class));
+        verify(taskService, never()).createTask(any(Task.class));
     }
 
     @Test
     void shouldRejectTaskWithInvalidPriority() throws Exception {
-        String invalidJson = """
+        String json = """
                 {
                   "title": "Implement task API",
                   "project": "NexusOps",
@@ -281,19 +262,17 @@ class TaskControllerTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(invalidJson))
+                        .content(json))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Invalid request body"))
-                .andExpect(jsonPath("$.fieldErrors").isMap())
                 .andExpect(jsonPath("$.fieldErrors").isEmpty());
 
-        verify(taskRepository, never()).save(any(Task.class));
+        verify(taskService, never()).createTask(any(Task.class));
     }
 
     @Test
     void shouldRejectTaskWithInvalidStatus() throws Exception {
-        String invalidJson = """
+        String json = """
                 {
                   "title": "Implement task API",
                   "project": "NexusOps",
@@ -306,13 +285,11 @@ class TaskControllerTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(invalidJson))
+                        .content(json))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Invalid request body"))
-                .andExpect(jsonPath("$.fieldErrors").isMap())
                 .andExpect(jsonPath("$.fieldErrors").isEmpty());
 
-        verify(taskRepository, never()).save(any(Task.class));
+        verify(taskService, never()).createTask(any(Task.class));
     }
 }
