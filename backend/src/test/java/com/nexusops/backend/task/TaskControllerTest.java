@@ -104,6 +104,54 @@ class TaskControllerTest {
 
         verify(taskRepository, never()).save(any(Task.class));
     }
+    
+    @Test
+    void shouldRejectTaskWithBlankProject() throws Exception {
+        String invalidJson = """
+                {
+                  "title": "Implement task API",
+                  "project": "   ",
+                  "assignee": "SK",
+                  "priority": "HIGH",
+                  "status": "TODO",
+                  "dueDate": "2026-10-25"
+                }
+                """;
+
+        mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Validation failed"))
+                .andExpect(jsonPath("$.fieldErrors.project")
+                        .value("Project is required"));
+
+        verify(taskRepository, never()).save(any(Task.class));
+    }
+
+    @Test
+    void shouldRejectTaskWithBlankAssignee() throws Exception {
+        String invalidJson = """
+                {
+                  "title": "Implement task API",
+                  "project": "NexusOps",
+                  "assignee": "   ",
+                  "priority": "HIGH",
+                  "status": "TODO",
+                  "dueDate": "2026-10-25"
+                }
+                """;
+
+        mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Validation failed"))
+                .andExpect(jsonPath("$.fieldErrors.assignee")
+                        .value("Assignee is required"));
+
+        verify(taskRepository, never()).save(any(Task.class));
+    }
 
     @Test
     void shouldUpdateExistingTask() throws Exception {
@@ -157,6 +205,44 @@ class TaskControllerTest {
 
         verify(taskRepository).delete(existing);
     }
+    
+@Test
+void shouldRejectTaskWhenDueDateIsMissing() throws Exception {
+    String invalidJson = """
+            {
+              "title": "Implement task API",
+              "project": "NexusOps",
+              "assignee": "SK",
+              "priority": "HIGH",
+              "status": "TODO"
+            }
+            """;
+
+    mockMvc.perform(post("/api/tasks")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(invalidJson))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.fieldErrors.dueDate")
+                    .value("Due date is required"));
+
+    verify(taskRepository, never()).save(any(Task.class));
+}
+
+@Test
+void shouldRejectMalformedJson() throws Exception {
+    String malformedJson = """
+            {
+              "title": "Implement task API",
+              "project": "NexusOps",
+            """;
+
+    mockMvc.perform(post("/api/tasks")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(malformedJson))
+            .andExpect(status().isBadRequest());
+
+    verify(taskRepository, never()).save(any(Task.class));
+}
 
     @Test
     void shouldReturnNotFoundWhenDeletingMissingTask() throws Exception {
