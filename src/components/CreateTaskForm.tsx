@@ -1,4 +1,3 @@
-
 import { useState, type FormEvent } from "react";
 import type { Task } from "../types";
 import type { CreateTaskInput } from "../services/taskApi";
@@ -8,6 +7,7 @@ type CreateTaskFormProps = {
   onCancel: () => void;
   isSubmitting: boolean;
   error: string | null;
+  initialTask?: Task | null;
 };
 
 function CreateTaskForm({
@@ -15,13 +15,18 @@ function CreateTaskForm({
   onCancel,
   isSubmitting,
   error,
+  initialTask = null,
 }: CreateTaskFormProps) {
-  const [title, setTitle] = useState("");
-  const [project, setProject] = useState("NexusOps");
-  const [assignee, setAssignee] = useState("");
-  const [priority, setPriority] = useState<Task["priority"]>("MEDIUM");
-  const [status, setStatus] = useState<Task["status"]>("TODO");
-  const [dueDate, setDueDate] = useState("");
+  const [title, setTitle] = useState(initialTask?.title ?? "");
+  const [project, setProject] = useState(initialTask?.project ?? "NexusOps");
+  const [assignee, setAssignee] = useState(initialTask?.assignee ?? "");
+  const [priority, setPriority] = useState<Task["priority"]>(
+    initialTask?.priority ?? "MEDIUM",
+  );
+  const [status, setStatus] = useState<Task["status"]>(
+    initialTask?.status ?? "TODO",
+  );
+  const [dueDate, setDueDate] = useState(initialTask?.dueDate ?? "");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -35,6 +40,8 @@ function CreateTaskForm({
       dueDate,
     });
   }
+
+  const isEditing = initialTask !== null;
 
   return (
     <form className="create-task-form" onSubmit={handleSubmit}>
@@ -136,7 +143,13 @@ function CreateTaskForm({
           type="submit"
           disabled={isSubmitting}
         >
-          {isSubmitting ? "Creating..." : "Create task"}
+          {isSubmitting
+            ? isEditing
+              ? "Saving..."
+              : "Creating..."
+            : isEditing
+              ? "Save changes"
+              : "Create task"}
         </button>
       </div>
     </form>

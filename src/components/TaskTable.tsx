@@ -1,9 +1,9 @@
-
 import type { Task, TaskPriority, TaskStatus } from "../types";
 
 interface TaskTableProps {
   tasks: Task[];
   variant: "dashboard" | "tasks";
+  onEdit?: (task: Task) => void;
 }
 
 function formatStatus(status: TaskStatus) {
@@ -21,7 +21,11 @@ function formatDashboardDate(date: string) {
   });
 }
 
-export default function TaskTable({ tasks, variant }: TaskTableProps) {
+export default function TaskTable({
+  tasks,
+  variant,
+  onEdit,
+}: TaskTableProps) {
   const isDashboard = variant === "dashboard";
 
   return (
@@ -33,6 +37,7 @@ export default function TaskTable({ tasks, variant }: TaskTableProps) {
             <th>Priority</th>
             <th>Status</th>
             <th>Due date</th>
+            {!isDashboard && <th>Actions</th>}
           </tr>
         </thead>
 
@@ -67,16 +72,27 @@ export default function TaskTable({ tasks, variant }: TaskTableProps) {
               </td>
 
               <td className="due-date">
-                {isDashboard
-                  ? formatDashboardDate(task.dueDate)
-                  : task.dueDate}
+                {isDashboard ? formatDashboardDate(task.dueDate) : task.dueDate}
               </td>
+
+              {!isDashboard && (
+                <td>
+                  <button
+                    type="button"
+                    className="task-edit-button"
+                    onClick={() => onEdit?.(task)}
+                    disabled={!onEdit}
+                  >
+                    Edit
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
 
           {tasks.length === 0 && (
             <tr>
-              <td colSpan={4} className="empty-state">
+              <td colSpan={isDashboard ? 4 : 5} className="empty-state">
                 No tasks match your search.
               </td>
             </tr>

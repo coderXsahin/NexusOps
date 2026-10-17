@@ -17,7 +17,11 @@ import StatCard from "./components/StatCard";
 import TaskTable from "./components/TaskTable";
 import CreateTaskForm from "./components/CreateTaskForm";
 import type { Task } from "./types";
-import { createTask, fetchTasks } from "./services/taskApi";
+import {
+  createTask,
+  fetchTasks,
+  updateTask,
+} from "./services/taskApi";
 import type { CreateTaskInput } from "./services/taskApi";
 import {
   countOverdueTasks,
@@ -38,6 +42,10 @@ function App() {
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [createTaskError, setCreateTaskError] = useState<string | null>(null);
+
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [isUpdatingTask, setIsUpdatingTask] = useState(false);
+  const [updateTaskError, setUpdateTaskError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +98,41 @@ function App() {
       );
     } finally {
       setIsCreatingTask(false);
+    }
+  }
+
+  function handleEditTask(task: Task) {
+    setIsCreateFormOpen(false);
+    setCreateTaskError(null);
+    setUpdateTaskError(null);
+    setEditingTask(task);
+  }
+
+  async function handleUpdateTask(input: CreateTaskInput) {
+    if (!editingTask) {
+      return;
+    }
+
+    setIsUpdatingTask(true);
+    setUpdateTaskError(null);
+
+    try {
+      const updatedTask = await updateTask(editingTask.id, input);
+
+      setTasks((currentTasks) =>
+        currentTasks.map((task) =>
+          task.id === updatedTask.id ? updatedTask : task,
+        ),
+      );
+
+      setEditingTask(null);
+      setSearchQuery("");
+    } catch (error) {
+      setUpdateTaskError(
+        error instanceof Error ? error.message : "Unable to update task.",
+      );
+    } finally {
+      setIsUpdatingTask(false);
     }
   }
 
@@ -372,6 +415,8 @@ function App() {
                   className="primary-button"
                   type="button"
                   onClick={() => {
+                    setEditingTask(null);
+                    setUpdateTaskError(null);
                     setCreateTaskError(null);
                     setIsCreateFormOpen(true);
                   }}
@@ -382,23 +427,35 @@ function App() {
               </div>
             </div>
 
-            {isCreateFormOpen && (
+            {(isCreateFormOpen || editingTask !== null) && (
               <div className="panel create-task-panel">
                 <div className="panel-header">
                   <div>
-                    <h2>Create a task</h2>
-                    <p>Add a task to your NexusOps workspace.</p>
+                    <h2>{editingTask ? "Edit task" : "Create a task"}</h2>
+                    <p>
+                      {editingTask
+                        ? `Update the details for task #${editingTask.id}.`
+                        : "Add a task to your NexusOps workspace."}
+                    </p>
                   </div>
                 </div>
 
                 <CreateTaskForm
-                  onSubmit={handleCreateTask}
+                  key={editingTask ? `edit-${editingTask.id}` : "create"}
+                  initialTask={editingTask}
+                  onSubmit={
+                    editingTask ? handleUpdateTask : handleCreateTask
+                  }
                   onCancel={() => {
                     setIsCreateFormOpen(false);
+                    setEditingTask(null);
                     setCreateTaskError(null);
+                    setUpdateTaskError(null);
                   }}
-                  isSubmitting={isCreatingTask}
-                  error={createTaskError}
+                  isSubmitting={
+                    editingTask ? isUpdatingTask : isCreatingTask
+                  }
+                  error={editingTask ? updateTaskError : createTaskError}
                 />
               </div>
             )}
@@ -413,7 +470,11 @@ function App() {
                 </div>
               </div>
 
-              <TaskTable tasks={filteredTasks} variant="tasks" />
+              <TaskTable
+                tasks={filteredTasks}
+                variant="tasks"
+                onEdit={handleEditTask}
+              />
             </div>
           </section>
         )}
