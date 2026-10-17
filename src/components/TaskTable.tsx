@@ -1,9 +1,12 @@
+
 import type { Task, TaskPriority, TaskStatus } from "../types";
 
 interface TaskTableProps {
   tasks: Task[];
   variant: "dashboard" | "tasks";
   onEdit?: (task: Task) => void;
+  onDelete?: (task: Task) => void;
+  deletingTaskId?: number | null;
 }
 
 function formatStatus(status: TaskStatus) {
@@ -25,6 +28,8 @@ export default function TaskTable({
   tasks,
   variant,
   onEdit,
+  onDelete,
+  deletingTaskId = null,
 }: TaskTableProps) {
   const isDashboard = variant === "dashboard";
 
@@ -72,19 +77,38 @@ export default function TaskTable({
               </td>
 
               <td className="due-date">
-                {isDashboard ? formatDashboardDate(task.dueDate) : task.dueDate}
+                {isDashboard
+                  ? formatDashboardDate(task.dueDate)
+                  : task.dueDate}
               </td>
 
               {!isDashboard && (
                 <td>
-                  <button
-                    type="button"
-                    className="task-edit-button"
-                    onClick={() => onEdit?.(task)}
-                    disabled={!onEdit}
-                  >
-                    Edit
-                  </button>
+                  <div className="task-actions">
+                    <button
+                      type="button"
+                      className="task-edit-button"
+                      onClick={() => onEdit?.(task)}
+                      disabled={
+                        !onEdit || deletingTaskId === task.id
+                      }
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      className="task-delete-button"
+                      onClick={() => onDelete?.(task)}
+                      disabled={
+                        !onDelete || deletingTaskId === task.id
+                      }
+                    >
+                      {deletingTaskId === task.id
+                        ? "Deleting..."
+                        : "Delete"}
+                    </button>
+                  </div>
                 </td>
               )}
             </tr>

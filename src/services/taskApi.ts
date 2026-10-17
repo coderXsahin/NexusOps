@@ -87,3 +87,30 @@ export async function updateTask(
 
   return (await response.json()) as Task;
 }
+
+export async function deleteTask(id: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/tasks/${id}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    let message = `Failed to delete task: HTTP ${response.status}`;
+
+    try {
+      const errorBody: {
+        error?: string;
+        message?: string;
+      } = await response.json();
+
+      if (errorBody.message) {
+        message = errorBody.message;
+      } else if (errorBody.error) {
+        message = errorBody.error;
+      }
+    } catch {
+      // Keep the fallback HTTP error message.
+    }
+
+    throw new Error(message);
+  }
+}

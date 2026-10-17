@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-
+import org.springframework.web.bind.annotation.DeleteMapping;
 import jakarta.validation.Valid;
 
 @RestController
@@ -57,4 +57,14 @@ public class TaskController {
 
         return taskRepository.save(existingTask);
     }
+    @DeleteMapping("/{id}")
+@ResponseStatus(HttpStatus.NO_CONTENT)
+public void deleteTask(@PathVariable Long id) {
+    Task existingTask = taskRepository.findById(id)
+            .orElseThrow(() -> new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Task not found with id: " + id));
+
+    taskRepository.delete(existingTask);
+}
 }

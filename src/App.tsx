@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -19,6 +18,7 @@ import CreateTaskForm from "./components/CreateTaskForm";
 import type { Task } from "./types";
 import {
   createTask,
+  deleteTask,
   fetchTasks,
   updateTask,
 } from "./services/taskApi";
@@ -46,6 +46,9 @@ function App() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isUpdatingTask, setIsUpdatingTask] = useState(false);
   const [updateTaskError, setUpdateTaskError] = useState<string | null>(null);
+
+  const [deletingTaskId, setDeletingTaskId] = useState<number | null>(null);
+  const [deleteTaskError, setDeleteTaskError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,6 +108,7 @@ function App() {
     setIsCreateFormOpen(false);
     setCreateTaskError(null);
     setUpdateTaskError(null);
+    setDeleteTaskError(null);
     setEditingTask(task);
   }
 
@@ -133,6 +137,39 @@ function App() {
       );
     } finally {
       setIsUpdatingTask(false);
+    }
+  }
+
+  async function handleDeleteTask(task: Task) {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${task.title}"?\n\nThis action cannot be undone.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingTaskId(task.id);
+    setDeleteTaskError(null);
+
+    try {
+      await deleteTask(task.id);
+
+      setTasks((currentTasks) =>
+        currentTasks.filter((currentTask) => currentTask.id !== task.id),
+      );
+
+      if (editingTask?.id === task.id) {
+        setEditingTask(null);
+      }
+
+      setIsCreateFormOpen(false);
+    } catch (error) {
+      setDeleteTaskError(
+        error instanceof Error ? error.message : "Unable to delete task.",
+      );
+    } finally {
+      setDeletingTaskId(null);
     }
   }
 
@@ -201,6 +238,12 @@ function App() {
           </p>
         )}
 
+        {deleteTaskError && (
+          <p className="api-feedback api-error" role="alert">
+            Could not delete task: {deleteTaskError}
+          </p>
+        )}
+
         <header className="topbar">
           <div className="breadcrumb">
             <span>Workspace</span>
@@ -240,10 +283,10 @@ function App() {
           <>
             <section className="page-heading">
               <div>
-                <p className="eyebrow">THURSDAY, OCTOBER 15</p>
+                <p className="eyebrow">WORKSPACE OVERVIEW</p>
                 <h1>Good morning, Shaheen 👋</h1>
                 <p className="page-description">
-                  Here&apos;s what&apos;s happening with your workspace today.
+                  Here's what's happening with your workspace today.
                 </p>
               </div>
 
@@ -280,7 +323,7 @@ function App() {
                 <div className="panel-header">
                   <div>
                     <h2>Recent tasks</h2>
-                    <p>Your team&apos;s latest work and progress</p>
+                    <p>Your team's latest work and progress</p>
                   </div>
 
                   <button
@@ -418,6 +461,7 @@ function App() {
                     setEditingTask(null);
                     setUpdateTaskError(null);
                     setCreateTaskError(null);
+                    setDeleteTaskError(null);
                     setIsCreateFormOpen(true);
                   }}
                 >
@@ -474,6 +518,8 @@ function App() {
                 tasks={filteredTasks}
                 variant="tasks"
                 onEdit={handleEditTask}
+                onDelete={handleDeleteTask}
+                deletingTaskId={deletingTaskId}
               />
             </div>
           </section>
